@@ -16,6 +16,36 @@ random.seed(1)
 
 
 class Maze:
+    """
+    The Maze class contains all information about a randomly generated 3D maze. The maze is randomly generated at
+    initialisation. A config is required for the initialisation, an example config with explanation can be found
+    above.
+
+    The class utilises the following internal parameters to hold information about the maze:
+        self.maze: a 3D integer array that stores the most native maze layout. The maze is consisted of rooms with
+        different sizes, each room has a unique id, and occupies a cube shape space in the maze. Self.maze contains
+        the room ids of the room each cell belongs to. The start room is always room 0, and the goal room is -1.
+
+        self.rooms: a dictionary to quickly reference a room by its ID.
+
+        self.paths: a dictionary to describe the connectivity of the rooms. Some neighbouring rooms are connected
+        by a door, and the doors are randomly generated such that all the rooms are connected in a spanning tree
+        fashion, with the start room as the root. Self.paths describes such a tree, its keys are room ids, and the
+        values are the room's corresponding parent room id in the spanning tree.
+
+        self.doors: a dictionary to quickly reference the doors by its location (x, y, z).
+
+        self.solution_path: a list of room ids that leads from start room to the goal room.
+
+    The class provides some utility functions to print the information about the maze:
+        print_grid(): it simply prints the maze in its native form, i.e. printing self.maze layer by layer.
+
+        print_solution_path(): it prints the room ids in the self.solution_path to show the correct path to goal.
+
+        print_floor_plan(): it prints the maze layout, including walls, doors, ceiling/floors etc. Optionally it
+        can also print the solution path in the layout, indicated by arrows at doors.
+
+    """
     def __init__(self, config: Dict):
         self.config = config
         self.mh, self.mr, self.mc = self.config["maze_size"]
@@ -23,9 +53,13 @@ class Maze:
         self.paths: Dict[int, int] = {}
         self.doors: Dict[Tuple[int, int, int], Set[int]] = {}
         self.solution_path: List[int] = []
+        # initialise the maze grid
         self._init_maze()
+        # randomly fill the maze with rooms
         self._generate_rooms()
+        # find all the neighbouring rooms, represented as a network (but not connecting them yet)
         self._generate_maze_network()
+        # generate a spanning tree to connect all the rooms, with the start room as the root.
         self._generate_spanning_tree()
 
     def _init_maze(self):
@@ -154,6 +188,7 @@ class Maze:
 
     def _generate_spanning_tree(self):
         # Random Depth-First Search to generate a path to the goal
+        # this is also the solution path to the goal.
         stack: List[Room] = [self.rooms[0]]
         visited = set(stack)
         while stack:
