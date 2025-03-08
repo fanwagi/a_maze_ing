@@ -45,6 +45,14 @@ class Maze:
         print_floor_plan(): it prints the maze layout, including walls, doors, ceiling/floors etc. Optionally it
         can also print the solution path in the layout, indicated by arrows at doors.
 
+    The input config should have the following keys:
+        maze_size: a tuple of three values to represent the total size of the maze in the (height, rows, columns) format.
+        start_loc: start room's highest top left corner cell, represented as its index in a tuple.
+        start_room_size: the size of the start room, represented as a tuple of 3 values on the 3 dimensions.
+        goal_loc: goal room's starting location, a tuple of 3 values.
+        goal_room_size: goal room's size, a tuple of 3 values.
+        max_room_size: maximum size of each dimension for any room in the maze. A tuple of 3 values.
+
     """
     def __init__(self, config: Dict):
         self.config = config
@@ -63,7 +71,7 @@ class Maze:
         self._generate_spanning_tree()
 
     def _init_maze(self):
-        # Maze grid. Each cell is filled with an integer corresponding to its room id.
+        # Maze grid. Each cell will be filled with an integer corresponding to its room id.
         self.maze: List[List[List[int]]] = [[[None] * self.mc for _ in range(self.mr)] for _ in range(self.mh)]
         # The starting room has id 0
         self._set_room(self.config["start_loc"], self.config["start_room_size"], 0)
@@ -71,6 +79,13 @@ class Maze:
         self._set_room(self.config["goal_loc"], self.config["goal_room_size"], -1)
 
     def _set_room(self, loc: Tuple[int, int, int], size: Tuple[int, int, int], id: int):
+        """
+        Create a room with specified location and size, and set all the cell values in the grid with id.
+        Args:
+            loc: A tuple of the start location of the room.
+            size: A tuple of the size of the room
+            id: The id of the room
+        """
         for hi in range(loc[0], loc[0] + size[0]):
             for ri in range(loc[1], loc[1] + size[1]):
                 for ci in range(loc[2], loc[2] + size[2]):
@@ -78,6 +93,9 @@ class Maze:
         self.rooms[id] = Room(loc, size, id)
 
     def print_grid(self):
+        """
+        Utility function for printing the grid values (room ids) layer by layer.
+        """
         for hi in range(self.mh):
             for ri in range(self.mr):
                 for ci in range(self.mc):
@@ -86,17 +104,26 @@ class Maze:
             print("===============================================")
 
     def _generate_rooms(self):
+        """
+        First step of generating a maze: fill the grid with rooms with random sizes.
+        Each room is limited by the maximum size in the config. The smallest room can be 1x1x1.
+        A chain of 1x1x1 rooms can be seen as a hallway, therefore it is not necessary to have a hallway type of room.
+        """
         room_id = 1
         # iterate over all cells in the maze, floor by floor, and try to fill them with rooms
         for hi in range(self.mh):
             for ri in range(self.mr):
                 for ci in range(self.mc):
+                    # skip the cell if it is already occupied by a room
                     if self.maze[hi][ri][ci] is not None:
                         continue
+                    # explore downwards to see the maximum height we can fit a room in.
                     max_room_h = 1
                     while max_room_h < self.config["max_room_size"][0] and hi + max_room_h < self.mh and self.maze[hi + max_room_h][ri][ci] is None:
                         max_room_h += 1
+                    # determine the room height randomly within the limit
                     room_h = random.randint(1, max_room_h)
+                    # now we have determined the height of the room, we can explore horizontally to determine the max row and columns we can fit a room in.
                     max_room_r = 1
                     while max_room_r < self.config["max_room_size"][1] and ri + max_room_r < self.mr:
                         can_fill = True
@@ -143,10 +170,18 @@ class Maze:
                                 break
                             max_room_c += 1
                         room_c = random.randint(1, max_room_c)
+                    # fill the grid with the room
                     self._set_room((hi, ri, ci), (room_h, room_r, room_c), room_id)
                     room_id += 1
 
     def _generate_maze_network(self):
+        """
+        Second step of generating a maze: find the neighbours of all the rooms.
+        A room is a neighbour if it shares a wall with the current room.
+        This effectively generate a network where each node is a room, and each edge representing the two rooms on
+        both sides are neighbours.
+        Later, we can generate a spanning tree in the network to generate paths in the maze.
+        """
         for room in self.rooms.values():
             # directions: 0=h-1, 1=h+1, 2=r-1, 3=r+1, 4=c-1, 5=c+1
             direction = 0
@@ -187,6 +222,14 @@ class Maze:
                         room.add_neighbor(neighbor, direction)
 
     def _generate_spanning_tree(self):
+        """
+        Last step of generating a maze: create paths from start room to goal room.
+        It starts with a random walk DFS to find a path from start room to goal room.
+        A door is created between neighbouring rooms on each step.
+        After a path is created, it randomly expands the tree to gradually connect all the rooms, which will
+        generate random dead ends in the maze.
+        The maze generated in this way will be a tree structure, i.e. there is no loop in the maze.
+        """
         # Random Depth-First Search to generate a path to the goal
         # this is also the solution path to the goal.
         stack: List[Room] = [self.rooms[0]]
@@ -220,11 +263,20 @@ class Maze:
                 self._add_door(room, neighbor)
             else:
                 stack.pop(i)
+        # walk backwards from the goal room to record the correct path.
         self.solution_path = [-1]
         while self.solution_path[0] != 0:
             self.solution_path.insert(0, self.paths[self.solution_path[0]])
 
     def _add_door(self, room1: Room, room2: Room):
+        """
+        Utility function for adding a door between two neighbouring rooms.
+        If there are multiple cells that could fit a door, use a random one, except that the door is always
+        at the lowest height.
+        Args:
+            room1: first room.
+            room2: second room.
+        """
         direction = room1.neighbors_directions[room1.neighbors.index(room2)]
         if direction % 2 == 0:
             room1, room2 = room2, room1
@@ -262,12 +314,24 @@ class Maze:
         room2.add_door(room1, (door_h, door_r, door_c), door_direction * 2)
 
     def print_solution_path(self):
+        """
+        Print the solution path as a chain of rooms (ids) along the path.
+        """
         print(f"{len(self.solution_path) - 1} steps:")
         for room in self.solution_path[:-1]:
             print(room, end=" -> ")
         print(self.solution_path[-1])
 
     def print_floor_plan(self, print_solution_path=True):
+        """
+        Utility function for printing the floor plan, including all the floors and walls.
+        If there is a door, it is left as empty. Each cell is represented by two characters, and each wall
+        is represented by a charactor.
+        If print_solution_path is True, it also prints the solution path on the floor plan as the directions
+        to the next room on the path.
+        Args:
+            print_solution_path: whether to print the solution path on the floor plan.
+        """
         floor_plan: List[List[str]] = [[] for _ in range(self.mh)]
         for hi in range(self.mh):
             # top boarder row
